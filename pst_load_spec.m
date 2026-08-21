@@ -9,7 +9,7 @@ function spec_struct = pst_load_spec(spec, water, ref_file, is_sv, Manufacturer)
         
         % create MRS/I structure
         spec_struct = pst_loadspec_sdat(spec, 1);
-    
+        
         % fill geo information 
         spec_struct.geometry.VOI_size = [spec_struct.geometry.size.lr, spec_struct.geometry.size.ap, spec_struct.geometry.size.cc];
         spec_struct.geometry.VOI_shift = [spec_struct.geometry.pos.lr, spec_struct.geometry.pos.ap, spec_struct.geometry.pos.cc];
@@ -26,16 +26,24 @@ function spec_struct = pst_load_spec(spec, water, ref_file, is_sv, Manufacturer)
 
         % fill geo information 
         spec_struct.geometry.VOI_size = [spec_struct.geometry.size.VoI_RoFOV, spec_struct.geometry.size.VoI_PeFOV, spec_struct.geometry.size.VoIThickness];
-        spec_struct.geometry.VOI_shift = [spec_struct.geometry.pos.PosSag, spec_struct.geometry.pos.PosCor, spec_struct.geometry.pos.PosTra];
+        spec_struct.geometry.VOI_shift = [spec_struct.geometry.pos.PosSag, spec_struct.geometry.pos.PosCor, spec_struct.geometry.pos.PosTra]; % this is used in SV case
         spec_struct.geometry.VOI_ang = [spec_struct.geometry.rot.NormSag, spec_struct.geometry.rot.NormCor, spec_struct.geometry.rot.NormTra];
         if ~is_sv
             spec_struct.geometry.FOV_size = [spec_struct.geometry.si_size.VoI_RoFOV, spec_struct.geometry.si_size.VoI_PeFOV, spec_struct.geometry.si_size.VoIThickness];
-            % in Siemens, VOI and FoV are aligned and centered, right?
-            spec_struct.geometry.FOV_shift = spec_struct.geometry.VOI_shift;
-            spec_struct.geometry.FOV_ang = spec_struct.geometry.VOI_ang;
+            spec_struct.geometry.FOV_shift = [spec_struct.geometry.si_pos.PosSag, spec_struct.geometry.si_pos.PosCor, spec_struct.geometry.si_pos.PosTra];
+            % in Siemens, VOI and FoV are aligned and centered, right? So, reassign the center point = center of the FOV
+            spec_struct.geometry.VOI_shift = spec_struct.geometry.FOV_shift;
+            spec_struct.geometry.FOV_ang = spec_struct.geometry.VOI_ang; 
         end
     end
     
+    % rename vendor to Manufacturer
+    spec_struct.Manufacturer = Manufacturer;
+    spec_struct.is_sv = is_sv;
+    if isfield(spec_struct,'vendor')
+        spec_struct = rmfield(spec_struct,'vendor');
+    end
+
     % is it a volume selection technique?
     disp("Checking if it is a volume selection MRSI technique in pst_load_spec (line 36)");
     if ~is_sv
@@ -51,6 +59,10 @@ function spec_struct = pst_load_spec(spec, water, ref_file, is_sv, Manufacturer)
     % MRS full name here
     spec_struct.spec_file = spec;
     [spec_struct.spec_path, spec_struct.spec_name, spec_struct.spec_ext] = fileparts(spec);
+
+    % This current spec processing path here
+    spec_struct.spec_processing_path = [spec_struct.spec_path filesep 'processing_' spec_struct.spec_name];
+
     
     if ~isempty(water)
         if isequal(Manufacturer, 'Philips')
@@ -59,6 +71,8 @@ function spec_struct = pst_load_spec(spec, water, ref_file, is_sv, Manufacturer)
             spec_struct.water_struct = pst_loadspec_rda(water);
         end
 
+        spec_struct.water_struct.is_sv = is_sv;
+        spec_struct.water_struct.Manufacturer = Manufacturer;
         spec_struct.water_struct.water_file = water;
         [spec_struct.water_struct.water_path, spec_struct.water_struct.water_name, spec_struct.water_struct.water_ext] = fileparts(water); 
     end

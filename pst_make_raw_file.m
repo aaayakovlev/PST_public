@@ -1,16 +1,17 @@
 function raw_name = pst_make_raw_file(spec_struct, iswater)
 
-    if ~exist([spec_struct.spec_path filesep 'lcm'], 'dir')
-        mkdir(spec_struct.spec_path, 'lcm');
+    if ~exist([spec_struct.spec_processing_path filesep 'lcm'], 'dir')
+        mkdir(spec_struct.spec_processing_path, 'lcm');
     end
 
     if ~iswater
-        [path, name, ~] = fileparts(spec_struct.spec_file);
-        raw_name = [path filesep 'lcm' filesep name '.RAW']; 
+        [~, name, ~] = fileparts(spec_struct.spec_file);
+        raw_name = [spec_struct.spec_processing_path filesep 'lcm' filesep name '.RAW']; 
         create_raw(spec_struct, raw_name)
     else
-        [path, name, ~] = fileparts(spec_struct.water_struct.water_file);
-        raw_name = [path filesep 'lcm' filesep name '.RAW']; 
+        [~, name, ~] = fileparts(spec_struct.water_struct.water_file);
+        raw_name = [spec_struct.spec_processing_path filesep 'lcm' filesep name '.RAW'];
+        spec_struct.water_struct.geometry.VOI_size = spec_struct.geometry.VOI_size; % this is missing in the water struct. Ideally they should be of the same size all the time.
         create_raw(spec_struct.water_struct, raw_name)
 
     end
@@ -26,7 +27,11 @@ function create_raw(spec_struct, raw_name)
     
     echot = spec_struct.te;
     hzpppm = spec_struct.txfrq/10^6;
-    volume = prod(spec_struct.geometry.vox_sz) * 10^-3;
+    if ~spec_struct.is_sv
+        volume = prod(spec_struct.geometry.vox_sz) * 10^-3;
+    else
+        volume = prod(spec_struct.geometry.VOI_size) * 10^-3;
+    end
     fid = fopen(raw_name, 'w');
     % make namelist SEQPAR
     seq_str = sprintf(' %s\n', '$SEQPAR');

@@ -8,7 +8,6 @@ quantitative_files = {};
 ref_file = '';
 spec_file = '';
 spec_file = '';
-met_file = '';
 water_file = '';
 table_file = '';
 sl_value = 1;
@@ -51,18 +50,15 @@ sddegp = 1;
 dkntmn = 0.15;
 neach = 99;
 nsimul = 13;
-lcm_coord = false;
-lcm_tumor = false;
-basis_list = {};
-b_file_idx = 1;
-basis_file = '';
+lcm_print = true;
+basis_idx = 1;
 lcm_spec = true;
 ppmend = 0.5;
 ppmst = 4.0;
 spectra_pts = [];
 bright_factor = 1;
 bright_factor_str = '1';
-lcm_def_file = [defdir filesep 'LCModel' filesep 'lcm_def.mat'];
+lcm_def_file = [defdir filesep 'LCModel' filesep 'DONT_DELETE_ME_lcm_def.mat'];
 lcm_data_file = [defdir filesep 'LCModel' filesep 'lcm_data.mat'];
 data = struct;
 spec_struct = [];
@@ -80,6 +76,9 @@ lcmodel_processed = false;
 image_name = [];
 sel_names = {};
 sel_names_struct = struct;
+sel_file_is_old = true;
+hMarker = [];
+hMarker2 = [];
 
 %% Initialize GUI
 hf = figure('Position', [0 0 750 750], 'Name', 'PST', 'CloseRequestFcn', @my_close, 'MenuBar', 'none');
@@ -96,12 +95,11 @@ uimenu('Parent', hSet, 'Callback', {@lcm_show_spectra}, 'Label', 'Show spectra',
 
 %% create LCModel tab
 hLCM = uimenu('Label', '  LCModel  ');
-uimenu('Parent', hLCM, 'Callback', {@lcm_param}, 'Label', 'Parameters...');
-uimenu('Parent', hLCM, 'Callback', {@add_lcm_parameters}, 'Label', 'Add Parameters...'); 
-uimenu('Parent', hLCM, 'Callback', {@lcm_range}, 'Label', 'Range...');
-uimenu('Parent', hLCM, 'Callback', {@lcm_coord_switch}, 'Label', 'Save coordinate files');
-uimenu('Parent', hLCM, 'Callback', {@lcm_tumor_switch}, 'Label', 'Tumor');
-uimenu('Parent', hLCM, 'Callback', {@lcm_basis}, 'Label', 'Use specific basis file...');
+uimenu('Parent', hLCM, 'Callback', {@lcm_param}, 'Label', 'Parameters');
+uimenu('Parent', hLCM, 'Callback', {@add_lcm_parameters}, 'Label', 'Add Parameters'); 
+uimenu('Parent', hLCM, 'Callback', {@lcm_range}, 'Label', 'Define ppm range');
+uimenu('Parent', hLCM, 'Callback', {@lcm_print_switch}, 'Label', 'Save print files');
+uimenu('Parent', hLCM, 'Callback', {@lcm_basis}, 'Label', 'Use specific basis file');
 
 %% CONSTRUCT GUI CONTENT
 
@@ -143,7 +141,6 @@ col_vis = 80;
 row_vis = 110;
 
 % position the axes
-posit = get(hf,'Position');
 hAxes = axes('Units', 'pixels', 'Visible', 'off', 'Position', [col_vis+40 100 200 200]);
 hf.UserData.LR_flipped = true;
 hf.UserData.AP_flipped = true;
@@ -155,7 +152,6 @@ hf.UserData.initialAxesState.YDir = 'reverse';
 set([hAxes; get(hAxes,'Children')], 'ButtonDownFcn', @mouse_click);
 
 % position the axes
-posit = get(hf,'Position');
 hAxes2 = axes('Units', 'pixels', 'Visible', 'off', 'Position', [3*(col_vis+40) 100 200 200]);
 axis(hAxes2,'off')
 
@@ -272,10 +268,10 @@ hRFOV_dir_btn = uicontrol(hf, 'Style', 'pushbutton', 'String', 'AP', 'Visible', 
 % warning
 hWarningSiemensCSDE_text = uicontrol(hf, 'Style', 'text', 'String', {'WARNING! Work in progress!', 'Siemens CSDE is not verified!', 'Displacement may be wrong.'}, 'HorizontalAlignment', 'center', 'Visible', 'off', 'Position', [col_csde+30 e_offs+row_csde+0.5*gr_sz 100 80]);
 
-% Some random starting values
-GR_ex = -1.67; 
-GR_echo1 = -4.38; 
-GR_echo2 = -5.26;
+% Declare gradients safely
+GR_ex = 0; 
+GR_echo1 = 0; 
+GR_echo2 = 0;
 
 % Gradient buttons and fields
 hGR_text = uicontrol(hf, 'Style', 'text', 'String', 'G str (Ex / Echo1 / Echo2):', 'HorizontalAlignment', 'left', 'Visible', 'off', 'Position', [col_csde e_offs+row_csde+0.35*gr_sz 80 20]);
@@ -353,6 +349,12 @@ hTABLE.hTabledir_edit = hTabledir_edit;
 hTABLE.hTable_btn = hTable_btn;
 hTABLE.hMaketable_btn = hMaketable_btn;
 
+anno_warning = annotation('textbox', [0.32 0.605 0.57 0.08], 'units', 'normalized', 'String', ('Please be careful about orientation.'), 'FitBoxToText','On', 'FontSize', 9, 'FontWeight','normal', 'HitTest','off', 'Visible', 'off');
+anno_warning2 = annotation('textbox', [0.262 0.575 0.57 0.08], 'units', 'normalized', 'String', ('Normally a Flip AP and a Flip LR are needed if 3D T1w is used.'), 'FitBoxToText','On','FontSize', 9, 'FontWeight','normal', 'HitTest','off', 'Visible', 'off');
+anno_noLCModel = annotation('textbox', [0.62 0.655 0.70 0.08], 'units', 'normalized', 'String', ('This voxel was not processed in LCModel'), 'FitBoxToText','On','FontSize', 9, 'FontWeight','normal', 'HitTest','off', 'PickableParts','none', 'Visible', 'off');
+anno_LCModel = annotation('textbox', [0.62 0.655 0.57 0.08], 'units', 'normalized', 'String', ('Click on a processed voxel to open the LCModel ps file.'), 'FitBoxToText','On','FontSize', 9, 'FontWeight','normal', 'HitTest','off', 'Visible', 'off');
+anno_scroll_PS = annotation('textbox', [0.62 0.655 0.57 0.08], 'units', 'normalized', 'String', ('Use mousewheel to scroll, Ctrl+mousewheel to zoom and LMB to pan.'), 'FitBoxToText','On','FontSize', 9, 'FontWeight','normal', 'HitTest','off', 'Visible', 'off');
+
 % Enable
 hEnableBtns_btn = uicontrol(hf, 'Visible', 'off', 'Style', 'pushbutton', 'String', 'Enable all buttons', 'Position',  [col_vis+40-len/5 e_offs+0.5*gr_sz len/2 25], 'Callback', {@(~,~) enable_buttons});
 
@@ -368,7 +370,9 @@ set([hTitle hRef_text hRef_edit hFilespec_text hFilespec_edit hFilespec_btn hFil
     hMagnText hMagnEdit hMagnUp hMagnDown ...
     hSaveImage_btn hImageName_edit ...
     hProcSel_btn hReuseSel_btn hCSDE_Vis_btn hFlip_LR_btn hIndividual_text hPROC_CSDE_btn hResetView_btn ...
-    hShowCSText, hCSModifiedText, hIncreaseCS, hDecreaseCS, hEnableBtns_btn], ...
+    hShowCSText, hCSModifiedText, hIncreaseCS, hDecreaseCS, hEnableBtns_btn ...
+    anno_warning, anno_warning2, anno_LCModel, anno_noLCModel, anno_scroll_PS...
+    ], ...
     'Units', 'normalized', 'FontUnits', 'normalized');
 
 %% Initialize GUI functions
@@ -378,11 +382,22 @@ function my_close(~, ~)
     delete(gcf);
 end
 
+% Resize window
 hf.ResizeFcn = @onFigureResize;
 function onFigureResize(~, ~)
 
     set(hAxes, 'Units', 'normalized', 'Position', [0.26 0.17 0.25*magn_factor*width_factor 0.45*magn_factor]);
     set(hAxes2, 'Units', 'normalized', 'Position', [0.52 0.00 0.47 0.74]);
+
+    % figSize = get(hf,'Position');
+    % W = figSize(3);
+    % fontsize_factor = W/2560;
+
+    % set(anno_warning, 'FontSize', round(16*fontsize_factor))
+    % set(anno_warning2, 'FontSize', round(16*fontsize_factor))
+    % set(anno_LCModel, 'FontSize', round(16*fontsize_factor))
+    % set(anno_noLCModel, 'FontSize', round(16*fontsize_factor))
+
 end
 
 %% Settings tab functions
@@ -449,7 +464,7 @@ end
 function lcm_param(~, ~)
 
     cd(defdir);
-    if exist(lcm_data_file, 'file') == 2
+    if exist(lcm_data_file, 'file')
         data = load(lcm_data_file);
     end
     if isfield(data, 'degzer')
@@ -486,11 +501,11 @@ end
 
 function add_lcm_parameters(~, ~)
     
-    hParamFig = figure('Name', 'Add Parameters', 'Position', [500, 500, 300, 200], 'MenuBar', 'none', 'ToolBar', 'none', 'NumberTitle', 'off', 'Resize', 'off');
-    uicontrol(hParamFig, 'Style', 'text', 'String', 'Please write each parameter in a new line:', 'Position', [20, 70, 260, 120], 'HorizontalAlignment', 'left', 'FontSize', 10);
-    hParamEdit = uicontrol(hParamFig, 'Style', 'edit', 'Max', 100, 'Min', 0, 'Position', [20, 50, 260, 120], 'HorizontalAlignment', 'left');
+    hParamFig = figure('Name', 'Add Parameters', 'Position', [500, 500, 320, 200], 'MenuBar', 'none', 'ToolBar', 'none', 'NumberTitle', 'off', 'Resize', 'off');
+    uicontrol(hParamFig, 'Style', 'text', 'String', 'Please write each control parameter in a new line:', 'Position', [20, 70, 300, 120], 'HorizontalAlignment', 'left', 'FontSize', 10);
+    hParamEdit = uicontrol(hParamFig, 'Style', 'edit', 'Max', 100, 'Min', 0, 'Position', [20, 50, 280, 120], 'HorizontalAlignment', 'left');
     uicontrol(hParamFig, 'Style', 'pushbutton', 'String', 'Save', 'Position', [20, 10, 80, 30], 'Callback', {@save_lcm_parameters, hParamEdit});
-    uicontrol(hParamFig, 'Style', 'pushbutton', 'String', 'Close', 'Position', [190, 10, 80, 30], 'Callback', @(~, ~) close(hParamFig));
+    uicontrol(hParamFig, 'Style', 'pushbutton', 'String', 'Close', 'Position', [220, 10, 80, 30], 'Callback', @(~, ~) close(hParamFig));
 end
 
 function save_lcm_parameters(~, ~, hParamEdit)
@@ -535,24 +550,13 @@ function lcm_range(~, ~)
     pst_lcm_range(lcm_def_file, lcm_data_file, ppmend, ppmst);
 end
 
-function lcm_coord_switch(hObject, ~)
+function lcm_print_switch(hObject, ~)
     if strcmp(get(hObject, 'Checked'), 'on')
         set(hObject, 'Checked', 'off');
-        lcm_coord = false;
+        lcm_print = false;
     else 
         set(hObject, 'Checked', 'on');
-        lcm_coord = true;
-    end
-end
-
-function lcm_tumor_switch(hObject, ~)
-
-    if strcmp(get(hObject, 'Checked'), 'on')
-        set(hObject, 'Checked', 'off');
-        lcm_tumor = false;
-    else 
-        set(hObject, 'Checked', 'on');
-        lcm_tumor = true;
+        lcm_print = true;
     end
 end
 
@@ -561,34 +565,11 @@ function lcm_basis(~, ~)
     % Read the text file containing the numbered list of basis files with 
     % descriptions and let an user select a proper basis file
     cd(defdir);
-    if isempty(basis_list)
-        basis_files = ['LCModel' filesep 'basis-sets.txt'];
-        if exist(basis_files, 'file') == 2 
-            fid = fopen(basis_files);
-            basis_list = textscan(fid, '%d %s');
-            fclose(fid);
-        else
-            errordlg('The list of basis files is missing!');
-            return
-        end
-    end
+
     if exist(lcm_data_file, 'file') == 2
         data = load(lcm_data_file);
     end
-    if isfield(data, 'b_file_idx')
-        b_file_idx = data.b_file_idx;
-    end
-    if ~isempty(basis_list)
-        if b_file_idx <= size(basis_list{2}, 1)
-            basis_file = basis_list{2}{b_file_idx};
-        else
-            errordlg('Wrong basis file index!');
-            return
-        end
-        pst_lcm_basis(lcm_def_file, lcm_data_file, basis_list, b_file_idx);
-    else
-        errordlg('The list of basis files is empty!');
-    end
+    pst_lcm_basis(lcm_def_file, lcm_data_file);
 end
 
 %% Input/Load data functions 
@@ -613,7 +594,6 @@ end
 function ref_browse(~, ~)
     
     cd(curdir);
-    % [FileName, PathName, Ext] = uigetfile({'*.nii;*.nii.gz', 'NIfTI Files (*.nii, *.nii.gz)'; '*.*', 'All Files (*.*)'}, 'Select MRS file');
     [FileName, PathName] = uigetfile({'*.nii;*.nii.gz', 'NIfTI Files (*.nii, *.nii.gz)'; '*.*', 'All Files (*.*)'}, 'Select MRS file');
     file = [PathName FileName];
 
@@ -630,7 +610,6 @@ function ref_browse(~, ~)
         img_gr = [];
         spec_file = '';
         water_file = '';
-        met_file = '';
         table_dir = '';
         table_name = '';
         cur_sel_cell_array = [];
@@ -780,10 +759,14 @@ function load_data(~, ~)
 
     if ~is_sv
         set(hSelect_btn, 'Enable', 'on');
+        set(hReuseSel_btn, 'Enable', 'on');
         set(hDeleteSelection_btn, 'Enable', 'on');
+        set(hDeleteAll_btn, 'Enable', 'on');
     else
         set(hSelect_btn, 'Enable', 'off');
+        set(hReuseSel_btn, 'Enable', 'off');
         set(hDeleteSelection_btn, 'Enable', 'off');
+        set(hDeleteAll_btn, 'Enable', 'off');
     end
     
     % reactivate the button
@@ -793,8 +776,18 @@ function load_data(~, ~)
     fclose('all');
     disp(' ')
     disp('Data loaded!')
-
     
+    % Warning about image orientation. Hopefully will not be needed in future releases. This orientation is purely visual. Does not affect the real voxel masks positioning.
+    
+    figSize = get(hf,'Position');
+    W = figSize(3);
+    fontsize_factor = W/2560;
+
+    set(anno_warning, 'Visible', 'On')
+    set(anno_warning2, 'Visible', 'On')
+    
+    setGroupVisibility(hTABLE, 'On')
+
 end
 
 %% Visual part functions
@@ -867,7 +860,6 @@ function width_edit(hObject, ~)
     num = str2double(str);
     if num>0
         width_factor = num;
-        posit = get(hf,'Position');
         set(hAxes, 'Units', 'normalized', 'Position', [0.26 0.17 0.25*magn_factor*width_factor 0.45*magn_factor]);
     else
         errordlg('The magnification factor must be positive!');
@@ -888,7 +880,6 @@ function width_arrow(direction)
     width_factor = width_factor + direction*width_step;
     width_factor = max(0.1, min(7, width_factor));
     set(hWidthEdit, 'String', sprintf('%1.1f', width_factor));
-    posit = get(hf,'Position');
     set(hAxes, 'Units', 'normalized', 'Position', [0.26 0.17 0.25*magn_factor*width_factor 0.45*magn_factor]);
     if ~is_sv
         draw_FOV(spec_struct.geometry);
@@ -903,7 +894,6 @@ function magn_edit(hObject, ~)
     num = str2double(str);
     if num>0
         magn_factor = num;
-        posit = get(hf,'Position');
         set(hAxes, 'Units', 'normalized', 'Position', [0.26 0.17 0.25*magn_factor*width_factor 0.45*magn_factor]);
     else
         errordlg('The magnification factor must be positive!');
@@ -924,7 +914,6 @@ function magn_arrow(direction)
     magn_factor = magn_factor + direction*magn_step;
     magn_factor = max(0.1, min(7, magn_factor));
     set(hMagnEdit, 'String', sprintf('%1.1f', magn_factor));
-    posit = get(hf,'Position');
     set(hAxes, 'Units', 'normalized', 'Position', [0.26 0.17 0.25*magn_factor*width_factor 0.45*magn_factor]);
     if ~is_sv
         draw_FOV(spec_struct.geometry);
@@ -1381,10 +1370,17 @@ function process_CSD(varargin)
         pause(0.01);
     
         load_csd_parameters;
-    
-        for i=1:length(ppmShifts)
-            shifted_structs(i) = spec_struct;
+        
+        if isequal(spec_struct.Manufacturer, 'Siemens') && ( GR_ex == 0 || GR_echo1 == 0 || GR_echo2 == 0)
+            errordlg("Please input the gradient strengths correctly!")
+            set(hPROC_CSDE_btn, 'String', 'Process CSDE', 'Enable', 'on')
+            return
         end
+
+        shifted_structs(1:length(ppmShifts)) = spec_struct;        
+        % for i=1:length(ppmShifts)
+        %     shifted_structs(i) = spec_struct;
+        % end
         for i = 1:length(ppmShifts) 
         
             fprintf('\n%s%s%s\n', 'Processing shifted geometry, delta = ', num2str(ppmShifts(i)), '...');
@@ -1460,12 +1456,20 @@ function process_CSD(varargin)
     set(hPROC_CSDE_btn, 'Enable', 'on', 'String', 'Process CSDE')
     disp(' ')
     disp('Chemical Shift Displacement processed!')
+
+    apply_flip_AP(hAxes, hf.UserData.AP_flipped);
+    apply_flip_LR(hAxes, hf.UserData.LR_flipped);
 end
 
 %% Individual voxel processing functions
 
 function select_voxels(~,~)
     
+    if exist(sel_file, 'file') && sel_file_is_old % in this case refresh the file (the flag by default is True)
+        delete(sel_file)
+    end
+    sel_file_is_old = false;
+
     if isempty(cur_sel)
         cur_sel = zeros([spec_struct.nYvoxels spec_struct.nXvoxels spec_struct.nZvoxels]);
     end
@@ -1520,16 +1524,16 @@ function select_voxels(~,~)
         sel_z_cell_array = [sel_z_cell_array {sel_z}];
 
         if ~isempty(spec_file)
-            [path, name] = fileparts(spec_file);
-            sel_file = fullfile(path, [name '.csv']);
+            sel_name = ['voxel_selection_' spec_struct.spec_name '.csv'];
+            sel_file = fullfile(spec_struct.spec_processing_path, sel_name);
         end
-        if exist(sel_file, 'file') ~= 2
-            fid = fopen(sel_file, 'w');
+        
+        if ~exist(spec_struct.spec_processing_path, "dir") 
+            mkdir(spec_struct.spec_processing_path);
+        end
+        fid = fopen(sel_file, 'a');
+        if ftell(fid) == 0
             fprintf(fid, '%s\n', 'i j Region');
-        else
-            fid = fopen(sel_file, 'a');
-            last_pos = ftell(fid);
-            last_pos_cell_array = [last_pos_cell_array {last_pos}];
         end
         for i = sel_x1_spec:sel_x2_spec
             for j = sel_y1_spec:sel_y2_spec
@@ -1548,9 +1552,9 @@ end
 
 function reuse_selections(~,~)
 
-    [sel_path, sel_name] = fileparts(spec_file);
-    sel_file = [sel_path filesep sel_name '.csv'];
-    if ~isempty(sel_file) && exist(sel_file, 'file') == 2 && ~isempty(spec_file) && isempty(met_file)
+    sel_name = ['voxel_selection_' spec_struct.spec_name '.csv'];
+    sel_file = fullfile(spec_struct.spec_processing_path, sel_name);
+    if ~isempty(sel_file) && exist(sel_file, 'file') == 2 && ~isempty(spec_file)
         quest = sprintf('%s%s\n%s', 'The program has found MRS selection. ', 'Do you want to reuse it?', 'Be sure the image is flipped the same way as it was during initial selection.');
         answer = questdlg(quest, 'Previous region selection');
 
@@ -1562,16 +1566,14 @@ function reuse_selections(~,~)
                     sel_z_cell_array = [sel_z_cell_array {sel_z}];
                     for ind = 1:size(ij, 1)
                         sel_str = regexp(region{ind}, '\d+', 'match');
-                        sel_nr = str2double(sel_str{1});
+                        sel_nr = str2double(sel_str{1})+1;
                         i = ij(ind, 1);
                         j = ij(ind, 2);
-                        plot_i = i;
-                        plot_j = spec_struct.nYvoxels - j + 1;
+                        plot_i = spec_struct.nXvoxels - i + 1;
+                        plot_j = j;
                         cur_sel(plot_j, plot_i, sel_z) = sel_nr;
                     end
                     cur_sel_cell_array = [cur_sel_cell_array {cur_sel}];
-                    % draw_FOV(spec_struct.geometry);
-                    % draw_VOI(curr_ppmShift);
                     draw_selection(spec_struct.geometry);
                 else
                     warning("The selection couldn't be taken over!");
@@ -1694,10 +1696,8 @@ function process_lcmodel(~, ~)
 
         cd(defdir);
 
-        if exist(lcm_data_file, 'file') ~= 2
-            if lcm_tumor
-                data.sptype = 'tumor';
-            end
+        if ~exist(lcm_data_file, 'file')
+
             data.neach = neach;
             data.degzer = degzer;
             data.sddegz = sddegz;
@@ -1707,20 +1707,17 @@ function process_lcmodel(~, ~)
             data.nsimul = nsimul;  
             data.ppmend = ppmend;
             data.ppmst = ppmst;
-            data.lcm_coord = lcm_coord;
-            data.b_file_idx = b_file_idx;
+            data.lcm_print = lcm_print;
+            data.basis_idx = basis_idx;
         else
             data = load(lcm_data_file);
-            if lcm_tumor && ~isfield(data, 'sptype')
-                data.sptype = 'tumor';
-            end
-            if ~lcm_tumor && isfield(data, 'sptype')
+            if isfield(data, 'sptype')
                 data = rmfield(data, 'sptype');
             end
-            if isfield(data, 'b_file_idx')
-                b_file_idx = data.b_file_idx;
+            if isfield(data, 'basis_idx')
+                basis_idx = data.basis_idx;
             else
-                data.b_file_idx = b_file_idx;
+                data.basis_idx = basis_idx;
             end
             if ~isfield(data, 'degzer')
                 data.degzer = degzer;
@@ -1746,26 +1743,26 @@ function process_lcmodel(~, ~)
             if ~isfield(data, 'ppmst')
                 data.ppmst = ppmst;
             end
-            data.lcm_coord = lcm_coord;
+            data.lcm_print = lcm_print;
         end
         save(lcm_data_file, '-struct', 'data');
-        if exist([spec_struct.spec_path filesep 'lcm'], 'dir')
+        if exist([spec_struct.spec_processing_path filesep 'lcm'], 'dir')
             answer = questdlg('LCModel processing was already done. Would you like to run it again?', 'Question:', 'Yes', 'No', 'No');
             switch answer
                 case 'Yes'
-                    lcmDir = fullfile(spec_struct.spec_path, 'lcm');
-                    pdfDir = fullfile(spec_struct.spec_path, 'lcm_pdf');
-                    pngDir = fullfile(spec_struct.spec_path, 'lcm_png');
+                    lcmDir = fullfile(spec_struct.spec_processing_path, 'lcm');
+                    pdfDir = fullfile(spec_struct.spec_processing_path, ['lcm' filesep 'lcm_pdf']);
+                    pngDir = fullfile(spec_struct.spec_processing_path, ['lcm' filesep 'lcm_png']);
                     
                     fclose all;
-                    if exist(lcmDir, 'dir')
-                        rmdir(lcmDir, 's');
-                    end
                     if exist(pdfDir, 'dir')
                         rmdir(pdfDir, 's');
                     end
                     if exist(pngDir, 'dir')
                         rmdir(pngDir, 's');
+                    end
+                    if exist(lcmDir, 'dir')
+                        rmdir(lcmDir, 's');
                     end
                 case 'No'
                     return
@@ -1801,35 +1798,7 @@ function process_lcmodel(~, ~)
             sel_names_struct.('vox1_1') = 'SV';
         end
 
-        if isempty(basis_list)
-            basis_files = ['LCModel' filesep 'basis-sets.txt'];
-            if exist(basis_files, 'file') == 2 
-                fid = fopen(basis_files);
-                basis_list = textscan(fid, '%d %s');
-                fclose(fid);
-            else
-                errordlg('The list of basis files is missing!');
-                return
-            end
-        end
-        if ~isempty(basis_list)
-            if b_file_idx <= size(basis_list{2}, 1)
-                basis_file = basis_list{2}{b_file_idx};
-            else
-                errordlg('Wrong basis file index!');
-                fprintf('%s\n\n', 'Analysis cancelled!');
-                return
-            end
-        else
-            errordlg('The list of basis files is empty!');
-            fprintf('%s\n\n', 'Analysis cancelled!');
-            return
-        end
-        if isempty(basis_file)
-            errordlg('Empty basis file name!');
-            fprintf('%s\n\n', 'Analysis cancelled!');
-            return
-        end
+        basis_set = data.basis_set;
 
         if ispc
             % Windows part starts here
@@ -1852,11 +1821,11 @@ function process_lcmodel(~, ~)
             indices = 1:size(ij,1);
             if use_parfor && ~is_sv
                 parfor ind = indices
-                    pst_process_lcm_voxel(ij, ind, spec_struct, defdir, basis_file, sel_names{ind}, raw_name, raw_name_water, lcm_data_file);
+                    pst_process_lcm_voxel(ij, ind, spec_struct, basis_set, sel_names{ind}, raw_name, raw_name_water, lcm_data_file);
                 end
             else
                 for ind = indices
-                    pst_process_lcm_voxel(ij, ind, spec_struct, defdir, basis_file, sel_names{ind}, raw_name, raw_name_water, lcm_data_file);
+                    pst_process_lcm_voxel(ij, ind, spec_struct, basis_set, sel_names{ind}, raw_name, raw_name_water, lcm_data_file);
                 end
             end
             lcm_time = toc;
@@ -1927,9 +1896,9 @@ function process_lcmodel(~, ~)
     % 4) copy pdf to lcm_pdf
 
     disp('Converting PS to PDF...')
-    copyfile([defdir filesep 'third_party' filesep 'ps2pdf'], [curdir 'lcm' filesep 'ps2pdf'])
-    copyfile(fullfile([curdir 'lcm'], '*.ps'), [curdir 'lcm' filesep 'ps2pdf' filesep 'files']);
-    cd([curdir 'lcm' filesep 'ps2pdf']);
+    copyfile([defdir filesep 'third_party' filesep 'ps2pdf'], [spec_struct.spec_processing_path filesep 'lcm' filesep 'ps2pdf'])
+    copyfile(fullfile(spec_struct.spec_processing_path, 'lcm', '*.ps'), [spec_struct.spec_processing_path filesep 'lcm' filesep 'ps2pdf' filesep 'files']);
+    cd([spec_struct.spec_processing_path filesep 'lcm' filesep 'ps2pdf']);
     [status, cmdout] = system('convert.bat > NUL 2>&1');
     if status ~= 0
         disp('Conversion to PDF failed:')
@@ -1938,7 +1907,7 @@ function process_lcmodel(~, ~)
         return
     end
 
-    copyfile([curdir 'lcm' filesep 'ps2pdf' filesep 'files'], [curdir 'lcm_pdf']);
+    copyfile([spec_struct.spec_processing_path filesep 'lcm' filesep 'ps2pdf' filesep 'files'], [spec_struct.spec_processing_path filesep 'lcm' filesep 'lcm_pdf']);
     cd('..'); %go to lcm
     rmdir('ps2pdf', 's');
     cd(defdir)
@@ -1949,6 +1918,9 @@ function process_lcmodel(~, ~)
     set(hLCM_btn, 'Enable', 'on');
     set(hLCM_btn, 'String', 'LCModel');
     setGroupVisibility(hTABLE, 'On')
+    
+    set(anno_LCModel, 'Visible', 'on');
+
 end
 
 function process_composition(~, ~)
@@ -1981,12 +1953,14 @@ function process_composition(~, ~)
         sel_names_struct.('vox1_1') = 'SV';
     end
 
+
+    vox_ids = cell(length(ppmShifts_with_0), 1);
     for i=1:length(ppmShifts_with_0)
         
         shift_val_str = pst_get_shift_value_string(ppmShifts_with_0(i));
 
         % prepare the folder for individual results
-        voxel_results_folders.(['folder_' shift_val_str]) = [spec_struct.spec_path, filesep 'voxel_results' filesep 'voxel_results_' num2str(ppmShifts_with_0(i))];
+        voxel_results_folders.(['folder_' shift_val_str]) = [spec_struct.spec_processing_path, filesep 'voxel_results' filesep 'voxel_results_' num2str(ppmShifts_with_0(i))];
         if ~exist(voxel_results_folders.(['folder_' shift_val_str]), 'dir')
             mkdir(voxel_results_folders.(['folder_' shift_val_str]));
         end
@@ -2067,39 +2041,63 @@ end
 %% Make Table functions 
 function table_browse(~, ~)
 
-    cd(curdir);
+    cd(spec_struct.spec_processing_path);
     dir_name = uigetdir('', 'Select directory for saving the results table');
     if ~isequal(dir_name, 0)
         set(hTabledir_edit, 'String', dir_name);
         table_dir = dir_name;
-        if isempty(get(hTablename_edit, 'String'))
-            table_name = 'table';
-            set(hTablename_edit, 'String', 'table');
-        end
+    end
+    if isempty(get(hTablename_edit, 'String'))
+        table_name = ['final_table_' spec_struct.spec_name ];
+        set(hTablename_edit, 'String', 'final_table');
     end
 end
 
 function make_table(~, ~)
     
-    if isempty(table_dir) && (~isempty(spec_file) || ~isempty(met_file))
+    if isempty(table_dir) && ~isempty(spec_file)
         table_browse;
-        if isempty(table_dir)
-            return
-        end
     end
     table_file = fullfile(table_dir, table_name);
 
     cd(defdir)
     lcmodel_new_fields = [];
-    if lcmodel_processed % todo: send inside make table function
-        
+
+    % the part comes that allows to save the final table if you ran the
+    % processing beforehand and have the LCModel and voxel_composition
+    % files saved.
+    % this part of the code is a subject to revision. Now it works but should be simplified
+
+    if ~is_sv
+        % make a loop over selection, save selection names if not saved at LCModel step
+
+        sel_name = ['voxel_selection_' spec_struct.spec_name '.csv'];
+        sel_file = fullfile(spec_struct.spec_processing_path, sel_name);
+        sel_names = {}; %refresh if the new selection was done after processing
+        sel_names_struct = struct;
+        [ij, sel_names] = read_sel_file(sel_file);
+        for ind = 1:size(ij, 1)
+            i = ij(ind, 1);
+            j = ij(ind, 2);
+            lcm_i = i;
+            lcm_j = spec_struct.nYvoxels - j + 1;
+            sel_names_struct.(['vox' num2str(lcm_i) '_' num2str(lcm_j)]) = sel_names{ind};
+        end
+    else
+        sel_names_struct.('vox1_1') = 'SV';
+    end
+
+    if exist([spec_struct.spec_processing_path filesep 'lcm'], "dir")
+
+        lcmodel_processed = true;
+
         % combine .table files from LCModel to spec_struct.voxel_results.lcmodel
         if ~is_sv
             [ij, ~] = read_sel_file(sel_file);
-            spec_struct = pst_combine_lcm_tables(spec_struct, spec_file, ij);
+            spec_struct = pst_combine_lcm_tables(spec_struct, ij);
         else
             try 
-                lcm_sv_dir = dir(fullfile(fileparts(spec_file), 'lcm', 'SV_*.table'));
+                lcm_sv_dir = dir(fullfile([spec_struct.spec_processing_path filesep 'lcm' filesep 'SV_*.table']));
                 lcm_sv_table_file = [lcm_sv_dir.folder filesep lcm_sv_dir.name];
                 dataStruct = pst_io_readlcmtab(lcm_sv_table_file);
                 spec_struct.voxel_results.lcmodel.('vox1_1') = dataStruct; % save the file content to spec_struct
@@ -2122,11 +2120,60 @@ function make_table(~, ~)
         lcmodel_new_fields = strrep(lcmodel_new_fields,'-','x0x2D');   
         lcmodel_new_fields = strrep(lcmodel_new_fields,'/','0x2F');  
     end
+    
+    cd(defdir)
+
+    % Read the composition processing results into selected voxel substructs from existing jsons
+    
+    if exist([spec_struct.spec_processing_path filesep 'voxel_results'], "dir") && ~isfield(spec_struct.voxel_results, 'voxresults_0')
+     
+
+        voxel_results_dir = dir([spec_struct.spec_processing_path filesep 'voxel_results']);
+        voxel_results_subfolders = cell(length(voxel_results_dir)-2, 1);
+        ppmShifts_with_0 = zeros(length(voxel_results_dir)-2, 1);
+        for i=1:length(voxel_results_dir)-2
+            voxel_results_subfolders{i} = voxel_results_dir(i+2).name;
+            ppmShifts_with_0(i) = str2double(voxel_results_subfolders{i}(15:end));
+        end
+        ppmShifts_with_0 = sort(ppmShifts_with_0);
+
+        vox_ids = cell(length(ppmShifts_with_0), 1);
+
+        for i=1:length(ppmShifts_with_0)
+            voxel_results_subfolders_dir = dir([spec_struct.spec_processing_path filesep 'voxel_results' filesep voxel_results_subfolders{i}]);
+            jsons = cell(length(voxel_results_subfolders_dir)-2, 1);
+            shift_val_str = pst_get_shift_value_string(ppmShifts_with_0(i));
+
+            for k=1:length(voxel_results_subfolders_dir)-2
+                jsons{k} = voxel_results_subfolders_dir(k+2).name;
+                vox_ids{i}{k} = [str2double(jsons{k}(1:2)) str2double(jsons{k}(4:5))];
+                voxel_results_folders.(['folder_' shift_val_str]) = [spec_struct.spec_processing_path, filesep 'voxel_results' filesep 'voxel_results_' shift_val_str];
+            end
+            spec_struct = pst_combine_voxel_jsons(spec_struct, voxel_results_folders, shift_val_str, vox_ids{i});
+
+        end
+        
+        if isfield(spec_struct.voxel_results.voxresults_0,'GM')
+            segmentation_analyzed = true;
+            if length(fieldnames(spec_struct.voxel_results.voxresults_0)) > 3
+                parametric_analyzed = true;
+            else
+                parametric_analyzed = false;
+            end
+        else
+            segmentation_analyzed = false;
+            if length(fieldnames(spec_struct.voxel_results.voxresults_0)) > 0 % this is not needed, but let's keep it for clarity
+                parametric_analyzed = true;
+            end
+        end
+
+    end
 
     cd(defdir)
-    if ~isempty(spec_file)
+    % if ~isempty(spec_file)
         pst_make_table(spec_struct, table_file, lcmodel_processed, segmentation_analyzed, ppmShifts_with_0, parametric_analyzed, qMRI_names, lcmodel_new_fields, sel_names_struct);
-    end
+    % end
+
     fprintf('%s\n', ' ');
     fprintf('%s\n', '___________________________');
     fprintf('%s\n\n', 'The final table is created!');
@@ -2227,7 +2274,6 @@ function visual_out(delta_ppm)
     hAxes.YColor = 'none';
     hAxes.XTick  = [];
     hAxes.YTick  = [];
-    posit = get(hf,'Position');
     set(hAxes, 'Units', 'normalized', 'Position', [0.26 0.17 0.25*magn_factor*width_factor 0.45*magn_factor], 'Visible', 'on');
 
     if ~is_sv 
@@ -2272,47 +2318,72 @@ function mouse_click(~, ~)
         file_ptrn = sprintf('%s%s%s', 'SV_', '*', '.pdf');
     end
 
-    spec_path = fileparts(spec_file);
-    pdf_files = dir(fullfile(spec_path, 'lcm_pdf', file_ptrn));
-    pdf_file = pdf_files(1).name;
+    pdf_files = dir(fullfile(spec_struct.spec_processing_path, 'lcm', 'lcm_pdf', file_ptrn));
+    delete(anno_LCModel);
     if ~isempty(pdf_files)
-            
+        pdf_file = pdf_files(1).name;
         if ispc
             cd(defdir)
-            input_pdf = fullfile(spec_path, 'lcm_pdf', pdf_file);
+            input_pdf = fullfile(spec_struct.spec_processing_path, 'lcm', 'lcm_pdf', pdf_file);
             [~, pdf_name] = fileparts(pdf_file);
-            if ~isfolder([spec_path filesep 'lcm_png'])
-                mkdir([spec_path filesep 'lcm_png']);
+            if ~isfolder([spec_struct.spec_processing_path filesep 'lcm' filesep 'lcm_png'])
+                mkdir([spec_struct.spec_processing_path filesep 'lcm' filesep 'lcm_png']);
             end
-            output_pattern = fullfile(spec_path, 'lcm_png', sprintf('%d_%d', cur_y_spec, cur_x_spec), [pdf_name '_page%02d.png']);
-            if ~isfolder([spec_path filesep 'lcm_png' filesep sprintf('%d_%d', cur_y_spec, cur_x_spec)])
-                mkdir([spec_path filesep 'lcm_png' filesep sprintf('%d_%d', cur_y_spec, cur_x_spec)]);
+            if ~is_sv
+                output_pattern = fullfile(spec_struct.spec_processing_path, 'lcm', 'lcm_png', sprintf('%d_%d', cur_y_spec, cur_x_spec), [pdf_name '_page%02d.png']);
+                if ~isfolder([spec_struct.spec_processing_path filesep 'lcm' filesep 'lcm_png' filesep sprintf('%d_%d', cur_y_spec, cur_x_spec)])
+                    mkdir([spec_struct.spec_processing_path filesep 'lcm' filesep 'lcm_png' filesep sprintf('%d_%d', cur_y_spec, cur_x_spec)]);
+                end
+            else
+                output_pattern = fullfile(spec_struct.spec_processing_path, 'lcm', 'lcm_png', [pdf_name '_page%02d.png']);
+                if ~isfolder([spec_struct.spec_processing_path, filesep 'lcm' filesep 'lcm_png'])
+                    mkdir([spec_struct.spec_processing_path, filesep 'lcm' filesep 'lcm_png']);
+                end
             end
+
             convert_PDF_PNG_cmd = sprintf('"third_party\\mupdf-1.27.0-windows\\mutool.exe" draw -r 150 -A 8 -o "%s" "%s"', output_pattern, input_pdf);
             [code, message] = system(convert_PDF_PNG_cmd);
             if code ~= 0
                 disp(message);
                 return
             end
-            folder = fullfile(spec_path, 'lcm_png', sprintf('%d_%d', cur_y_spec, cur_x_spec));
+            if ~is_sv
+                folder = fullfile(spec_struct.spec_processing_path, 'lcm', 'lcm_png', sprintf('%d_%d', cur_y_spec, cur_x_spec));
+            else
+                folder = fullfile(spec_struct.spec_processing_path, 'lcm', 'lcm_png');
+            end
             fig = ancestor(hAxes2, 'figure');
             set(hAxes2, 'Clipping', 'on')
             setupViewer(fig, hAxes2, folder);
-            annotation('textbox', [0.52 0.655 0.57 0.08], 'units', 'normalized', 'String', ('Scroll PS file with mousewheel | Zoom with Ctrl + mousewheel | Pan with LMB'), 'FitBoxToText', 'on', 'FontSize', 13, 'FontWeight','normal', 'HitTest','off');
+    
+            if exist('anno_LCModel',"var")
+                delete(anno_LCModel);
+            end
+
+            set(anno_noLCModel, 'Visible', 'Off')
+            set(anno_scroll_PS, 'Visible', 'On')
+
         elseif isunix
-            open_cmd = sprintf('%s %s', 'evince', fullfile(spec_path, 'lcm', ps_file));
+            open_cmd = sprintf('%s %s', 'evince', fullfile(spec_struct.spec_processing_path, 'lcm', ps_file));
             pst_system_LD_clean(open_cmd);
         end
         
-        if ~exist('hMarker','var') || isempty(hMarker) || ~isgraphics(hMarker)
-            hold(hAxes,'on')
-            hMarker = line(hAxes, cur_x, cur_y,'Marker','x', 'Color','r', 'LineStyle','none', 'LineWidth',1, 'MarkerSize',10);
-            hold(hAxes,'off')
-        else
-            set(hMarker, 'XData', cur_x, 'YData', cur_y);
+        if ~is_sv
+            if ~exist('hMarker','var') || isempty(hMarker) || ~isgraphics(hMarker)
+                hold(hAxes,'on')
+                hMarker = line(hAxes, cur_x, cur_y,'Marker','x', 'Color','g', 'LineStyle','none', 'LineWidth', 1, 'MarkerSize', 6, 'HitTest','off', 'PickableParts','none');
+                hold(hAxes,'off')
+            else
+                hMarker2 = line(hAxes, cur_x, cur_y,'Marker','x', 'Color','g', 'LineStyle','none', 'LineWidth', 1, 'MarkerSize', 6, 'HitTest','off', 'PickableParts','none');
+                set(hMarker, 'Color', 'y');
+                hMarker = hMarker2;
+            end
         end
-
         spectra_pts = [spectra_pts; cur_x cur_y];
+    else
+        set(anno_scroll_PS, 'Visible', 'Off')
+        set(anno_noLCModel, 'Visible', 'On')
+        line(hAxes, cur_x, cur_y,'Marker','x', 'Color','r', 'LineStyle','none', 'LineWidth', 1, 'MarkerSize', 6, 'HitTest','off', 'PickableParts','none');
     end
     
     
@@ -2347,7 +2418,7 @@ function mouse_click(~, ~)
         render(fig);
     end
     
-    function factor = get_resolution_rescaling_factor(hFig)
+    function factor = get_resolution_rescaling_factor(hFig) % without this function, the resolution of the image is not optimized to the resolution of the display. I found the factor empirically. 
     
         figSize = get(hFig,'Position');
         W = figSize(3);
@@ -2457,18 +2528,15 @@ function mouse_click(~, ~)
         file = fullfile(viewer.folder, viewer.files(viewer.idx).name);
         img = imread(file);
         cla(viewer.hAxes,'reset')
-        % Display image fitted to axes
+
         imshow(img, 'Parent', viewer.hAxes, 'InitialMagnification', 'fit');
     
-        % Make axes occupy available space
         axis(viewer.hAxes,'image')
         axis(viewer.hAxes,'off')
     
-        % Explicit limits
         xlim(viewer.hAxes, [1 size(img,2)])
         ylim(viewer.hAxes, [1 size(img,1)])
     
-        % Image coordinates (top-left origin)
         set(viewer.hAxes, 'YDir', 'reverse')
     
         drawnow
@@ -2479,9 +2547,9 @@ end
 function show_appropriate_CSDE_parameters(~,~)
 
     setGroupVisibility(hCSDE, 'on')
-    if isequal(spec_struct.Manufacturer, 'Philips')
+    if isequal(Manufacturer, 'Philips')
         setGroupVisibility(hCSDE_Philips, 'on')
-    elseif isequal(spec_struct.Manufacturer, 'Siemens')
+    elseif isequal(Manufacturer, 'Siemens')
         setGroupVisibility(hCSDE_Siemens, 'on')
     end
 end
@@ -2550,6 +2618,10 @@ function draw_FOV(geometry)
 end
 
 function draw_VOI(ppmShift)
+    
+    if lcm_spec
+        set([hAxes; get(hAxes, 'Children')], 'ButtonDownFcn', @mouse_click);
+    end
 
     shift_val_str = pst_get_shift_value_string(ppmShift);
     current_structure = spec_struct.(['shifted_' shift_val_str]);
@@ -2609,7 +2681,7 @@ end
 function save_image
 
     F = getframe(hAxes);
-    image_folder = [curdir 'images' filesep ['delta_ppmShift_' num2str(curr_ppmShift)]];
+    image_folder = [spec_struct.spec_processing_path filesep 'images' filesep ['delta_ppmShift_' num2str(curr_ppmShift)]];
     if ~exist(image_folder, "dir")
         mkdir(image_folder)
     end

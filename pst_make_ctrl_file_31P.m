@@ -1,5 +1,8 @@
-function ctrl_name = pst_make_ctrl_file_31P(defdir, filename, basis_file, icolst, irowst, select_name, raw_name, raw_name_water, lcm_data_file)
+function ctrl_name = pst_make_ctrl_file_31P(filename, basis_set, icolst, irowst, select_name, raw_name, raw_name_water, lcm_data_file)
 
+% function not updated and should not work now. But currently, 2D 31P MRSI
+% LCModel processing is not the 1st priority for us. If you want it please
+% contact me
 hdr = pst_read_spec_header(filename);
 [path, name] = fileparts(filename);
 if isempty(select_name)
@@ -35,9 +38,9 @@ lcm_str = sprintf(' %s\n', '$LCMODL');
 
 title = sprintf(' %s''%s''\n', 'title = ', select_name);
 if ispc
-    filbas_str = sprintf(' %s''%s''\n', 'filbas = ', [defdir filesep 'LCModel' filesep 'basis-sets' filesep basis_file]);
+    filbas_str = sprintf(' %s''%s''\n', 'filbas = ', basis_set);
 elseif isunix
-    filbas_str = sprintf(' %s''%s''\n', 'filbas = ', ['~' filesep '.lcmodel' filesep 'basis-sets' filesep basis_file]);
+    filbas_str = sprintf(' %s''%s''\n', 'filbas = ', basis_set);
 end
 filraw_str = sprintf(' %s''%s''\n', 'filraw = ', raw_name);
 filps_str = sprintf(' %s''%s''\n', 'filps = ', ps_name);
